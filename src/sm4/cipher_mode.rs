@@ -323,6 +323,20 @@ mod tests {
     }
 
     #[test]
+    fn ctr_enc_long_test() {
+        let key = hex::decode("1234567890abcdef1234567890abcdef").unwrap();
+        let iv = hex::decode("fedcba0987654321fedcba0987654321").unwrap();
+
+        let cipher_mode = Sm4CipherMode::new(&key, CipherMode::Ctr).unwrap();
+        let msg = include_bytes!("example/textlong");
+        let lhs = cipher_mode.encrypt(msg, &iv).unwrap();
+        let lhs: &[u8] = lhs.as_ref();
+
+        let rhs: &[u8] = include_bytes!("example/text.sms4-ctr.long");
+        assert_eq!(lhs, rhs);
+    }
+
+    #[test]
     fn cfb_enc_test() {
         let key = hex::decode("1234567890abcdef1234567890abcdef").unwrap();
         let iv = hex::decode("fedcba0987654321fedcba0987654321").unwrap();
