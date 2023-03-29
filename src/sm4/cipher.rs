@@ -73,7 +73,7 @@ fn combine_block(input: &[u32]) -> Sm4Result<[u8; 16]> {
     Ok(out)
 }
 
-#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"),))]
+#[cfg(all(any(target_arch = "x86", target_arch = "x86_64")))]
 #[target_feature(enable = "sse")]
 #[target_feature(enable = "sse2")]
 #[target_feature(enable = "sse3")]
@@ -371,6 +371,7 @@ impl Sm4Cipher {
         combine_block(&y)
     }
 
+    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64")))]
     pub fn encrypt_sm4ni(&self, block_in: &[u8; 64]) -> Result<[u8; 64], Sm4Error> {
         let rk = &self.rk;
 
@@ -390,6 +391,20 @@ impl Sm4Cipher {
             }
         }
 
+        Ok(res)
+    }
+
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    pub fn encrypt_sm4ni(&self, block_in: &[u8; 64]) -> Result<[u8; 64], Sm4Error> {
+        let rk = &self.rk;
+
+        let mut res: [u8; 64] = [0; 64];
+        for i in 0..4 {
+            let tmp_res = self.encrypt(&block_in[i * 16..i * 16 + 16])?;
+            for z in 0..16 {
+                res[i * 16 + z] = tmp_res[z];
+            }
+        }
         Ok(res)
     }
 
