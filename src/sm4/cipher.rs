@@ -699,6 +699,10 @@ impl Sm4Cipher {
         combine_block(&y)
     }
 
+    // x86_64 下，使用 AVX 指令集加速 sm4 计算速度
+    // 当前开发未完成，仅保证功能正常；后续还需要进行如下处理：
+    // 1. 将加解密的输入输出位宽由 128 位扩展到 512 位
+
     pub fn encrypt_sm4ni(&self, block_in: &[u8; 16]) -> Result<[u8; 16], Sm4Error> {
         let rk = &self.rk;
 
