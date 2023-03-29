@@ -302,40 +302,56 @@ fn t_trans(input: u32) -> u32 {
     l_trans(tau_trans(input))
 }
 
+fn l_prime_trans(input: u32) -> u32 {
+    let b = input;
+    b ^ l_rotate(b, 13) ^ l_rotate(b, 23)
+}
+
+fn t_prime_trans(input: u32) -> u32 {
+    l_prime_trans(tau_trans(input))
+}
+
 pub struct Sm4Cipher {
     // round key
     rk: Vec<u32>,
 }
 
-static FK: [u32; 4] = [0xa3b1bac6, 0x56aa3350, 0x677d9197, 0xb27022dc];
+static FK: [u32; 4] = [0xa3b1_bac6, 0x56aa_3350, 0x677d_9197, 0xb270_22dc];
 
 static CK: [u32; 32] = [
-    0x00070E15, 0x1C232A31, 0x383F464D, 0x545B6269, 0x70777E85, 0x8C939AA1, 0xA8AFB6BD, 0xC4CBD2D9,
-    0xE0E7EEF5, 0xFC030A11, 0x181F262D, 0x343B4249, 0x50575E65, 0x6C737A81, 0x888F969D, 0xA4ABB2B9,
-    0xC0C7CED5, 0xDCE3EAF1, 0xF8FF060D, 0x141B2229, 0x30373E45, 0x4C535A61, 0x686F767D, 0x848B9299,
-    0xA0A7AEB5, 0xBCC3CAD1, 0xD8DFE6ED, 0xF4FB0209, 0x10171E25, 0x2C333A41, 0x484F565D, 0x646B7279,
+    0x0007_0e15,
+    0x1c23_2a31,
+    0x383f_464d,
+    0x545b_6269,
+    0x7077_7e85,
+    0x8c93_9aa1,
+    0xa8af_b6bd,
+    0xc4cb_d2d9,
+    0xe0e7_eef5,
+    0xfc03_0a11,
+    0x181f_262d,
+    0x343b_4249,
+    0x5057_5e65,
+    0x6c73_7a81,
+    0x888f_969d,
+    0xa4ab_b2b9,
+    0xc0c7_ced5,
+    0xdce3_eaf1,
+    0xf8ff_060d,
+    0x141b_2229,
+    0x3037_3e45,
+    0x4c53_5a61,
+    0x686f_767d,
+    0x848b_9299,
+    0xa0a7_aeb5,
+    0xbcc3_cad1,
+    0xd8df_e6ed,
+    0xf4fb_0209,
+    0x1017_1e25,
+    0x2c33_3a41,
+    0x484f_565d,
+    0x646b_7279,
 ];
-
-fn sm4_key_sub(input: u32) -> u32 {
-    let t = sm4_t_non_lin_sub(input);
-
-    t ^ rotl(t, 13) ^ rotl(t, 23)
-}
-
-fn sm4_t_non_lin_sub(x: u32) -> u32 {
-    let mut t: u32 = 0;
-
-    t |= ((SBOX[((x >> 24) as u8) as usize]) as u32) << 24;
-    t |= ((SBOX[((x >> 16) as u8) as usize]) as u32) << 16;
-    t |= ((SBOX[((x >> 8) as u8) as usize]) as u32) << 8;
-    t |= (SBOX[(x as u8) as usize]) as u32;
-
-    t
-}
-
-fn rotl(a: u32, n: u32) -> u32 {
-    (a << n) | (a >> (32 - n))
-}
 
 impl Sm4Cipher {
     pub fn new(key: &[u8]) -> Result<Sm4Cipher, Sm4Error> {
@@ -345,10 +361,10 @@ impl Sm4Cipher {
             k[i] ^= FK[i];
         }
         for i in 0..8 {
-            k[0] ^= sm4_key_sub(k[1] ^ k[2] ^ k[3] ^ CK[i * 4]);
-            k[1] ^= sm4_key_sub(k[2] ^ k[3] ^ k[0] ^ CK[i * 4 + 1]);
-            k[2] ^= sm4_key_sub(k[3] ^ k[0] ^ k[1] ^ CK[i * 4 + 2]);
-            k[3] ^= sm4_key_sub(k[0] ^ k[1] ^ k[2] ^ CK[i * 4 + 3]);
+            k[0] ^= t_prime_trans(k[1] ^ k[2] ^ k[3] ^ CK[i * 4]);
+            k[1] ^= t_prime_trans(k[2] ^ k[3] ^ k[0] ^ CK[i * 4 + 1]);
+            k[2] ^= t_prime_trans(k[3] ^ k[0] ^ k[1] ^ CK[i * 4 + 2]);
+            k[3] ^= t_prime_trans(k[0] ^ k[1] ^ k[2] ^ CK[i * 4 + 3]);
             cipher.rk.push(k[0]);
             cipher.rk.push(k[1]);
             cipher.rk.push(k[2]);
