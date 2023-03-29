@@ -396,8 +396,6 @@ impl Sm4Cipher {
 
     #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
     pub fn encrypt_sm4ni(&self, block_in: &[u8; 64]) -> Result<[u8; 64], Sm4Error> {
-        let rk = &self.rk;
-
         let mut res: [u8; 64] = [0; 64];
         for i in 0..4 {
             let tmp_res = self.encrypt(&block_in[i * 16..i * 16 + 16])?;
