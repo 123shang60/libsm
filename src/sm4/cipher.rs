@@ -221,157 +221,187 @@ unsafe fn sm4_encrypt_affine_ni(key: &Vec<u32>, sin: &[u8; 16], out: &mut [u8; 1
     #[cfg(target_arch = "x86_64")]
     use core::arch::x86_64::*;
 
-    let mut X: [__m256i; 4] = [
-        _mm256_setzero_si256(),
-        _mm256_setzero_si256(),
-        _mm256_setzero_si256(),
-        _mm256_setzero_si256(),
-    ];
-    let mut Temp: [__m256i; 4] = [
-        _mm256_setzero_si256(),
-        _mm256_setzero_si256(),
-        _mm256_setzero_si256(),
-        _mm256_setzero_si256(),
-    ];
-    let Mask: __m256i;
+    let c0f: __m128i =
+        core::mem::transmute_copy(&[0x0F0F0F0F0F0F0F0F as u64, 0x0F0F0F0F0F0F0F0F as u64]);
+    let flp: __m128i =
+        core::mem::transmute_copy(&[0x0405060700010203 as u64, 0x0C0D0E0F08090A0B as u64]);
+    let shr: __m128i =
+        core::mem::transmute_copy(&[0x0B0E0104070A0D00 as u64, 0x0306090C0F020508 as u64]);
+    let m1l: __m128i =
+        core::mem::transmute_copy(&[0x9197E2E474720701 as u64, 0xC7C1B4B222245157 as u64]);
+    let m1h: __m128i =
+        core::mem::transmute_copy(&[0xE240AB09EB49A200 as u64, 0xF052B91BF95BB012 as u64]);
+    let m2l: __m128i =
+        core::mem::transmute_copy(&[0x5B67F2CEA19D0834 as u64, 0xEDD14478172BBE82 as u64]);
+    let m2h: __m128i =
+        core::mem::transmute_copy(&[0xAE7201DD73AFDC00 as u64, 0x11CDBE62CC1063BF as u64]);
+    let r08: __m128i =
+        core::mem::transmute_copy(&[0x0605040702010003 as u64, 0x0E0D0C0F0A09080B as u64]);
+    let r16: __m128i =
+        core::mem::transmute_copy(&[0x0504070601000302 as u64, 0x0D0C0F0E09080B0A as u64]);
+    let r24: __m128i =
+        core::mem::transmute_copy(&[0x0407060500030201 as u64, 0x0C0F0E0D080B0A09 as u64]);
 
-    Mask = _mm256_set1_epi32(0xFF);
+    let mut t0: __m128i;
+    let mut t1: __m128i;
+    let mut t2: __m128i;
+    let mut t3: __m128i;
 
-    let temp1: [u64;4] = [sin[0] as u64,sin[1] as u64,sin[2] as u64,sin[3] as u64];
-    let temp2: [u64;4] = [sin[4] as u64,sin[5] as u64,sin[6] as u64,sin[7] as u64];
-    let temp3: [u64;4] = [sin[8] as u64,sin[9] as u64,sin[10] as u64,sin[11] as u64];
-    let temp4: [u64;4] = [sin[12] as u64,sin[13] as u64,sin[14] as u64,sin[15] as u64];
+    let p32:[i32;4] = core::mem::transmute_copy(sin);
 
-    Temp[0] = _mm256_loadu_si256(temp1.as_ptr() as *const __m256i);
-    Temp[1] = _mm256_loadu_si256(temp2.as_ptr() as *const __m256i);
-    Temp[2] = _mm256_loadu_si256(temp3.as_ptr() as *const __m256i);
-    Temp[3] = _mm256_loadu_si256(temp4.as_ptr() as *const __m256i);
+    t0 = _mm_set_epi32(0, 0, 0, p32[0]);
+    t0 = _mm_shuffle_epi8(t0, flp);
 
-    X[0] = _mm256_unpacklo_epi64(
-        _mm256_unpacklo_epi32(Temp[0], Temp[1]),
-        _mm256_unpacklo_epi32(Temp[2], Temp[3]),
-    );
-    X[1] = _mm256_unpackhi_epi64(
-        _mm256_unpacklo_epi32(Temp[0], Temp[1]),
-        _mm256_unpacklo_epi32(Temp[2], Temp[3]),
-    );
-    X[2] = _mm256_unpacklo_epi64(
-        _mm256_unpackhi_epi32(Temp[0], Temp[1]),
-        _mm256_unpackhi_epi32(Temp[2], Temp[3]),
-    );
-    X[3] = _mm256_unpackhi_epi64(
-        _mm256_unpackhi_epi32(Temp[0], Temp[1]),
-        _mm256_unpackhi_epi32(Temp[2], Temp[3]),
-    );
+    t1 = _mm_set_epi32(0, 0, 0, p32[ 1]);
+    t1 = _mm_shuffle_epi8(t1, flp);
 
-    let vindex: __m256i = _mm256_setr_epi8(
-        3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12, 3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8,
-        15, 14, 13, 12,
-    );
+    t2 = _mm_set_epi32(0, 0, 0, p32[ 2]);
+    t2 = _mm_shuffle_epi8(t2, flp);
 
-    X[0] = _mm256_shuffle_epi8(X[0], vindex);
-    X[1] = _mm256_shuffle_epi8(X[1], vindex);
-    X[2] = _mm256_shuffle_epi8(X[2], vindex);
-    X[3] = _mm256_shuffle_epi8(X[3], vindex);
+    t3 = _mm_set_epi32(0, 0, 0, p32[ 3]);
+    t3 = _mm_shuffle_epi8(t3, flp);
 
-    let sm4_sbox_t0_ptr = SM4_SBOX_T0.as_ptr() as *const i32;
-    let sm4_sbox_t1_ptr = SM4_SBOX_T1.as_ptr() as *const i32;
-    let sm4_sbox_t2_ptr = SM4_SBOX_T2.as_ptr() as *const i32;
-    let sm4_sbox_t3_ptr = SM4_SBOX_T3.as_ptr() as *const i32;
+    let mut x: __m128i;
+    let mut y: __m128i;
+    let mut t4: __m128i;
 
-    // 32轮迭代
-    for i in 0..32 {
-        let k: __m256i = _mm256_set1_epi32(key[i] as i32);
-        Temp[0] = _mm256_xor_si256(_mm256_xor_si256(X[1], X[2]), _mm256_xor_si256(X[3], k));
-        //查表
-        Temp[1] = _mm256_xor_si256(
-            X[0],
-            _mm256_i32gather_epi32(sm4_sbox_t3_ptr, _mm256_and_si256(Temp[0], Mask), 4),
+    for i in 0..8 {
+        let k1 = key[i * 4];
+        t4 = core::mem::transmute_copy(&[k1, k1, k1, k1]);
+        x = _mm_xor_si128(_mm_xor_si128(_mm_xor_si128(t1, t2), t3), t4);
+
+        y = _mm_and_si128(x, c0f);
+        y = _mm_shuffle_epi8(m1l, y);
+        x = _mm_srli_epi64(x, 4);
+        x = _mm_and_si128(x, c0f);
+        x = _mm_xor_si128(_mm_shuffle_epi8(m1h, x), y);
+        x = _mm_shuffle_epi8(x, shr);
+        x = _mm_aesenclast_si128(x, c0f);
+        y = _mm_andnot_si128(x, c0f);
+        y = _mm_shuffle_epi8(m2l, y);
+        x = _mm_srli_epi64(x, 4);
+        x = _mm_and_si128(x, c0f);
+        x = _mm_xor_si128(_mm_shuffle_epi8(m2h, x), y);
+        y = _mm_xor_si128(
+            _mm_xor_si128(x, _mm_shuffle_epi8(x, r08)),
+            _mm_shuffle_epi8(x, r16),
         );
-        Temp[0] = _mm256_srli_epi32(Temp[0], 8);
-        Temp[1] = _mm256_xor_si256(
-            Temp[1],
-            _mm256_i32gather_epi32(sm4_sbox_t2_ptr, _mm256_and_si256(Temp[0], Mask), 4),
-        );
-        Temp[0] = _mm256_srli_epi32(Temp[0], 8);
-        Temp[1] = _mm256_xor_si256(
-            Temp[1],
-            _mm256_i32gather_epi32(sm4_sbox_t1_ptr, _mm256_and_si256(Temp[0], Mask), 4),
-        );
-        Temp[0] = _mm256_srli_epi32(Temp[0], 8);
-        Temp[1] = _mm256_xor_si256(
-            Temp[1],
-            _mm256_i32gather_epi32(sm4_sbox_t0_ptr, _mm256_and_si256(Temp[0], Mask), 4),
-        );
+        y = _mm_xor_si128(_mm_slli_epi32(y, 2), _mm_srli_epi32(y, 30));
+        x = _mm_xor_si128(_mm_xor_si128(x, y), _mm_shuffle_epi8(x, r24));
 
-        X[0] = X[1];
-        X[1] = X[2];
-        X[2] = X[3];
-        X[3] = Temp[1];
+        t0 = _mm_xor_si128(t0, x);
+
+        let k2 = key[i * 4 + 1];
+        t4 = core::mem::transmute_copy(&[k2, k2, k2, k2]);
+        x = _mm_xor_si128(_mm_xor_si128(_mm_xor_si128(t0, t2), t3), t4);
+
+        y = _mm_and_si128(x, c0f);
+        y = _mm_shuffle_epi8(m1l, y);
+        x = _mm_srli_epi64(x, 4);
+        x = _mm_and_si128(x, c0f);
+        x = _mm_xor_si128(_mm_shuffle_epi8(m1h, x), y);
+        x = _mm_shuffle_epi8(x, shr);
+        x = _mm_aesenclast_si128(x, c0f);
+        y = _mm_andnot_si128(x, c0f);
+        y = _mm_shuffle_epi8(m2l, y);
+        x = _mm_srli_epi64(x, 4);
+        x = _mm_and_si128(x, c0f);
+        x = _mm_xor_si128(_mm_shuffle_epi8(m2h, x), y);
+        y = _mm_xor_si128(
+            _mm_xor_si128(x, _mm_shuffle_epi8(x, r08)),
+            _mm_shuffle_epi8(x, r16),
+        );
+        y = _mm_xor_si128(_mm_slli_epi32(y, 2), _mm_srli_epi32(y, 30));
+        x = _mm_xor_si128(_mm_xor_si128(x, y), _mm_shuffle_epi8(x, r24));
+
+        t1 = _mm_xor_si128(t1, x);
+
+        let k3 = key[i * 4 + 2];
+        t4 = core::mem::transmute_copy(&[k3, k3, k3, k3]);
+        x = _mm_xor_si128(_mm_xor_si128(_mm_xor_si128(t0, t1), t3), t4);
+
+        y = _mm_and_si128(x, c0f);
+        y = _mm_shuffle_epi8(m1l, y);
+        x = _mm_srli_epi64(x, 4);
+        x = _mm_and_si128(x, c0f);
+        x = _mm_xor_si128(_mm_shuffle_epi8(m1h, x), y);
+        x = _mm_shuffle_epi8(x, shr);
+        x = _mm_aesenclast_si128(x, c0f);
+        y = _mm_andnot_si128(x, c0f);
+        y = _mm_shuffle_epi8(m2l, y);
+        x = _mm_srli_epi64(x, 4);
+        x = _mm_and_si128(x, c0f);
+        x = _mm_xor_si128(_mm_shuffle_epi8(m2h, x), y);
+        y = _mm_xor_si128(
+            _mm_xor_si128(x, _mm_shuffle_epi8(x, r08)),
+            _mm_shuffle_epi8(x, r16),
+        );
+        y = _mm_xor_si128(_mm_slli_epi32(y, 2), _mm_srli_epi32(y, 30));
+        x = _mm_xor_si128(_mm_xor_si128(x, y), _mm_shuffle_epi8(x, r24));
+
+        t2 = _mm_xor_si128(t2, x);
+
+        let k4 = key[i * 4 + 3];
+        t4 = core::mem::transmute_copy(&[k4, k4, k4, k4]);
+        x = _mm_xor_si128(_mm_xor_si128(_mm_xor_si128(t0, t1), t2), t4);
+
+        y = _mm_and_si128(x, c0f);
+        y = _mm_shuffle_epi8(m1l, y);
+        x = _mm_srli_epi64(x, 4);
+        x = _mm_and_si128(x, c0f);
+        x = _mm_xor_si128(_mm_shuffle_epi8(m1h, x), y);
+        x = _mm_shuffle_epi8(x, shr);
+        x = _mm_aesenclast_si128(x, c0f);
+        y = _mm_andnot_si128(x, c0f);
+        y = _mm_shuffle_epi8(m2l, y);
+        x = _mm_srli_epi64(x, 4);
+        x = _mm_and_si128(x, c0f);
+        x = _mm_xor_si128(_mm_shuffle_epi8(m2h, x), y);
+        y = _mm_xor_si128(
+            _mm_xor_si128(x, _mm_shuffle_epi8(x, r08)),
+            _mm_shuffle_epi8(x, r16),
+        );
+        y = _mm_xor_si128(_mm_slli_epi32(y, 2), _mm_srli_epi32(y, 30));
+        x = _mm_xor_si128(_mm_xor_si128(x, y), _mm_shuffle_epi8(x, r24));
+
+        t3 = _mm_xor_si128(t3, x);
     }
 
-    //转化端序
-    X[0] = _mm256_shuffle_epi8(X[0], vindex);
-    X[1] = _mm256_shuffle_epi8(X[1], vindex);
-    X[2] = _mm256_shuffle_epi8(X[2], vindex);
-    X[3] = _mm256_shuffle_epi8(X[3], vindex);
+    let mut res: [u32;4] = [0;4];
+    let vr: [u32; 4];
 
-    let mut out_temp1: [u64;4] = [0x0,0x0,0x0,0x0];
-    let mut out_temp2: [u64;4] = [0x0,0x0,0x0,0x0];
-    let mut out_temp3: [u64;4] = [0x0,0x0,0x0,0x0];
-    let mut out_temp4: [u64;4] = [0x0,0x0,0x0,0x0];
-    //恢复分组并装填
-    _mm256_storeu_si256(
-        out_temp1.as_mut_ptr() as *mut __m256i,
-        _mm256_unpacklo_epi64(
-            _mm256_unpacklo_epi32(X[3], X[2]),
-            _mm256_unpacklo_epi32(X[1], X[0]),
-        ),
-    );
+    let mut v: __m128i = _mm_set_epi64x(0x0, 0x0);
+    let v_prt: *mut __m128i = &mut v;
+    _mm_store_si128(v_prt, _mm_shuffle_epi8(t3, flp));
+    vr = core::mem::transmute_copy(&v);
+    res[0] = vr[0];
 
-    _mm256_storeu_si256(
-        out_temp2.as_mut_ptr() as *mut __m256i,
-        _mm256_unpackhi_epi64(
-            _mm256_unpacklo_epi32(X[3], X[2]),
-            _mm256_unpacklo_epi32(X[1], X[0]),
-        ),
-    );
+    let mut v: __m128i = _mm_set_epi64x(0x0, 0x0);
+    let v_prt: *mut __m128i = &mut v;
+    _mm_store_si128(v_prt, _mm_shuffle_epi8(t2, flp));
 
-    _mm256_storeu_si256(
-        out_temp3.as_mut_ptr() as *mut __m256i,
-        _mm256_unpacklo_epi64(
-            _mm256_unpackhi_epi32(X[3], X[2]),
-            _mm256_unpackhi_epi32(X[1], X[0]),
-        ),
-    );
+    let vr: [u32; 4];
+    vr = core::mem::transmute_copy(&v);
+    res[1] = vr[0];
 
-    _mm256_storeu_si256(
-        out_temp4.as_mut_ptr() as *mut __m256i,
-        _mm256_unpackhi_epi64(
-            _mm256_unpackhi_epi32(X[3], X[2]),
-            _mm256_unpackhi_epi32(X[1], X[0]),
-        ),
-    );
+    let mut v: __m128i = _mm_set_epi64x(0x0, 0x0);
+    let v_prt: *mut __m128i = &mut v;
+    _mm_store_si128(v_prt, _mm_shuffle_epi8(t1, flp));
 
-    out[0] = out_temp1[0] as u8;
-    out[1] = out_temp1[1] as u8;
-    out[2] = out_temp1[2] as u8;
-    out[3] = out_temp1[3] as u8;
+    let vr: [u32; 4];
+    vr = core::mem::transmute_copy(&v);
+    res[2] = vr[0];
 
-    out[4] = out_temp2[0] as u8;
-    out[5] = out_temp2[1] as u8;
-    out[6] = out_temp2[2] as u8;
-    out[7] = out_temp2[3] as u8;
+    let mut v: __m128i = _mm_set_epi64x(0x0, 0x0);
+    let v_prt: *mut __m128i = &mut v;
+    _mm_store_si128(v_prt, _mm_shuffle_epi8(t0, flp));
 
-    out[8] = out_temp3[0] as u8;
-    out[9] = out_temp3[1] as u8;
-    out[10] = out_temp3[2] as u8;
-    out[11] = out_temp3[3] as u8;
+    let vr: [u32; 4];
+    vr = core::mem::transmute_copy(&v);
+    res[3] = vr[0];
 
-    out[12] = out_temp4[0] as u8;
-    out[13] = out_temp4[1] as u8;
-    out[14] = out_temp4[2] as u8;
-    out[15] = out_temp4[3] as u8;
+
+    *out = core::mem::transmute_copy(&res);
 }
 
 #[cfg(all(
@@ -382,157 +412,187 @@ unsafe fn sm4_decrypt_affine_ni(key: &Vec<u32>, sin: &[u8; 16], out: &mut [u8; 1
     #[cfg(target_arch = "x86_64")]
     use core::arch::x86_64::*;
 
-    let mut X: [__m256i; 4] = [
-        _mm256_setzero_si256(),
-        _mm256_setzero_si256(),
-        _mm256_setzero_si256(),
-        _mm256_setzero_si256(),
-    ];
-    let mut Temp: [__m256i; 4] = [
-        _mm256_setzero_si256(),
-        _mm256_setzero_si256(),
-        _mm256_setzero_si256(),
-        _mm256_setzero_si256(),
-    ];
-    let Mask: __m256i;
+    let c0f: __m128i =
+        core::mem::transmute_copy(&[0x0F0F0F0F0F0F0F0F as u64, 0x0F0F0F0F0F0F0F0F as u64]);
+    let flp: __m128i =
+        core::mem::transmute_copy(&[0x0405060700010203 as u64, 0x0C0D0E0F08090A0B as u64]);
+    let shr: __m128i =
+        core::mem::transmute_copy(&[0x0B0E0104070A0D00 as u64, 0x0306090C0F020508 as u64]);
+    let m1l: __m128i =
+        core::mem::transmute_copy(&[0x9197E2E474720701 as u64, 0xC7C1B4B222245157 as u64]);
+    let m1h: __m128i =
+        core::mem::transmute_copy(&[0xE240AB09EB49A200 as u64, 0xF052B91BF95BB012 as u64]);
+    let m2l: __m128i =
+        core::mem::transmute_copy(&[0x5B67F2CEA19D0834 as u64, 0xEDD14478172BBE82 as u64]);
+    let m2h: __m128i =
+        core::mem::transmute_copy(&[0xAE7201DD73AFDC00 as u64, 0x11CDBE62CC1063BF as u64]);
+    let r08: __m128i =
+        core::mem::transmute_copy(&[0x0605040702010003 as u64, 0x0E0D0C0F0A09080B as u64]);
+    let r16: __m128i =
+        core::mem::transmute_copy(&[0x0504070601000302 as u64, 0x0D0C0F0E09080B0A as u64]);
+    let r24: __m128i =
+        core::mem::transmute_copy(&[0x0407060500030201 as u64, 0x0C0F0E0D080B0A09 as u64]);
 
-    Mask = _mm256_set1_epi32(0xFF);
+    let mut t0: __m128i;
+    let mut t1: __m128i;
+    let mut t2: __m128i;
+    let mut t3: __m128i;
 
-    let temp1: [u64;4] = [sin[0] as u64,sin[1] as u64,sin[2] as u64,sin[3] as u64];
-    let temp2: [u64;4] = [sin[4] as u64,sin[5] as u64,sin[6] as u64,sin[7] as u64];
-    let temp3: [u64;4] = [sin[8] as u64,sin[9] as u64,sin[10] as u64,sin[11] as u64];
-    let temp4: [u64;4] = [sin[12] as u64,sin[13] as u64,sin[14] as u64,sin[15] as u64];
+    let p32:[i32;4] = core::mem::transmute_copy(sin);
 
-    Temp[0] = _mm256_loadu_si256(temp1.as_ptr() as *const __m256i);
-    Temp[1] = _mm256_loadu_si256(temp2.as_ptr() as *const __m256i);
-    Temp[2] = _mm256_loadu_si256(temp3.as_ptr() as *const __m256i);
-    Temp[3] = _mm256_loadu_si256(temp4.as_ptr() as *const __m256i);
+    t0 = _mm_set_epi32(0, 0, 0, p32[0]);
+    t0 = _mm_shuffle_epi8(t0, flp);
 
-    X[0] = _mm256_unpacklo_epi64(
-        _mm256_unpacklo_epi32(Temp[0], Temp[1]),
-        _mm256_unpacklo_epi32(Temp[2], Temp[3]),
-    );
-    X[1] = _mm256_unpackhi_epi64(
-        _mm256_unpacklo_epi32(Temp[0], Temp[1]),
-        _mm256_unpacklo_epi32(Temp[2], Temp[3]),
-    );
-    X[2] = _mm256_unpacklo_epi64(
-        _mm256_unpackhi_epi32(Temp[0], Temp[1]),
-        _mm256_unpackhi_epi32(Temp[2], Temp[3]),
-    );
-    X[3] = _mm256_unpackhi_epi64(
-        _mm256_unpackhi_epi32(Temp[0], Temp[1]),
-        _mm256_unpackhi_epi32(Temp[2], Temp[3]),
-    );
+    t1 = _mm_set_epi32(0, 0, 0, p32[ 1]);
+    t1 = _mm_shuffle_epi8(t1, flp);
 
-    let vindex: __m256i = _mm256_setr_epi8(
-        3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12, 3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8,
-        15, 14, 13, 12,
-    );
+    t2 = _mm_set_epi32(0, 0, 0, p32[ 2]);
+    t2 = _mm_shuffle_epi8(t2, flp);
 
-    X[0] = _mm256_shuffle_epi8(X[0], vindex);
-    X[1] = _mm256_shuffle_epi8(X[1], vindex);
-    X[2] = _mm256_shuffle_epi8(X[2], vindex);
-    X[3] = _mm256_shuffle_epi8(X[3], vindex);
+    t3 = _mm_set_epi32(0, 0, 0, p32[ 3]);
+    t3 = _mm_shuffle_epi8(t3, flp);
 
-    let sm4_sbox_t0_ptr = SM4_SBOX_T0.as_ptr() as *const i32;
-    let sm4_sbox_t1_ptr = SM4_SBOX_T1.as_ptr() as *const i32;
-    let sm4_sbox_t2_ptr = SM4_SBOX_T2.as_ptr() as *const i32;
-    let sm4_sbox_t3_ptr = SM4_SBOX_T3.as_ptr() as *const i32;
+    let mut x: __m128i;
+    let mut y: __m128i;
+    let mut t4: __m128i;
 
-    // 32轮迭代
-    for i in 0..32 {
-        let k: __m256i = _mm256_set1_epi32(key[31 - i] as i32);
-        Temp[0] = _mm256_xor_si256(_mm256_xor_si256(X[1], X[2]), _mm256_xor_si256(X[3], k));
-        //查表
-        Temp[1] = _mm256_xor_si256(
-            X[0],
-            _mm256_i32gather_epi32(sm4_sbox_t3_ptr, _mm256_and_si256(Temp[0], Mask), 4),
+    for i in 0..8 {
+        let k1 = key[31 - i * 4];
+        t4 = core::mem::transmute_copy(&[k1, k1, k1, k1]);
+        x = _mm_xor_si128(_mm_xor_si128(_mm_xor_si128(t1, t2), t3), t4);
+
+        y = _mm_and_si128(x, c0f);
+        y = _mm_shuffle_epi8(m1l, y);
+        x = _mm_srli_epi64(x, 4);
+        x = _mm_and_si128(x, c0f);
+        x = _mm_xor_si128(_mm_shuffle_epi8(m1h, x), y);
+        x = _mm_shuffle_epi8(x, shr);
+        x = _mm_aesenclast_si128(x, c0f);
+        y = _mm_andnot_si128(x, c0f);
+        y = _mm_shuffle_epi8(m2l, y);
+        x = _mm_srli_epi64(x, 4);
+        x = _mm_and_si128(x, c0f);
+        x = _mm_xor_si128(_mm_shuffle_epi8(m2h, x), y);
+        y = _mm_xor_si128(
+            _mm_xor_si128(x, _mm_shuffle_epi8(x, r08)),
+            _mm_shuffle_epi8(x, r16),
         );
-        Temp[0] = _mm256_srli_epi32(Temp[0], 8);
-        Temp[1] = _mm256_xor_si256(
-            Temp[1],
-            _mm256_i32gather_epi32(sm4_sbox_t2_ptr, _mm256_and_si256(Temp[0], Mask), 4),
-        );
-        Temp[0] = _mm256_srli_epi32(Temp[0], 8);
-        Temp[1] = _mm256_xor_si256(
-            Temp[1],
-            _mm256_i32gather_epi32(sm4_sbox_t1_ptr, _mm256_and_si256(Temp[0], Mask), 4),
-        );
-        Temp[0] = _mm256_srli_epi32(Temp[0], 8);
-        Temp[1] = _mm256_xor_si256(
-            Temp[1],
-            _mm256_i32gather_epi32(sm4_sbox_t0_ptr, _mm256_and_si256(Temp[0], Mask), 4),
-        );
+        y = _mm_xor_si128(_mm_slli_epi32(y, 2), _mm_srli_epi32(y, 30));
+        x = _mm_xor_si128(_mm_xor_si128(x, y), _mm_shuffle_epi8(x, r24));
 
-        X[0] = X[1];
-        X[1] = X[2];
-        X[2] = X[3];
-        X[3] = Temp[1];
+        t0 = _mm_xor_si128(t0, x);
+
+        let k2 = key[30 - i * 4];
+        t4 = core::mem::transmute_copy(&[k2, k2, k2, k2]);
+        x = _mm_xor_si128(_mm_xor_si128(_mm_xor_si128(t0, t2), t3), t4);
+
+        y = _mm_and_si128(x, c0f);
+        y = _mm_shuffle_epi8(m1l, y);
+        x = _mm_srli_epi64(x, 4);
+        x = _mm_and_si128(x, c0f);
+        x = _mm_xor_si128(_mm_shuffle_epi8(m1h, x), y);
+        x = _mm_shuffle_epi8(x, shr);
+        x = _mm_aesenclast_si128(x, c0f);
+        y = _mm_andnot_si128(x, c0f);
+        y = _mm_shuffle_epi8(m2l, y);
+        x = _mm_srli_epi64(x, 4);
+        x = _mm_and_si128(x, c0f);
+        x = _mm_xor_si128(_mm_shuffle_epi8(m2h, x), y);
+        y = _mm_xor_si128(
+            _mm_xor_si128(x, _mm_shuffle_epi8(x, r08)),
+            _mm_shuffle_epi8(x, r16),
+        );
+        y = _mm_xor_si128(_mm_slli_epi32(y, 2), _mm_srli_epi32(y, 30));
+        x = _mm_xor_si128(_mm_xor_si128(x, y), _mm_shuffle_epi8(x, r24));
+
+        t1 = _mm_xor_si128(t1, x);
+
+        let k3 = key[29 - i * 4];
+        t4 = core::mem::transmute_copy(&[k3, k3, k3, k3]);
+        x = _mm_xor_si128(_mm_xor_si128(_mm_xor_si128(t0, t1), t3), t4);
+
+        y = _mm_and_si128(x, c0f);
+        y = _mm_shuffle_epi8(m1l, y);
+        x = _mm_srli_epi64(x, 4);
+        x = _mm_and_si128(x, c0f);
+        x = _mm_xor_si128(_mm_shuffle_epi8(m1h, x), y);
+        x = _mm_shuffle_epi8(x, shr);
+        x = _mm_aesenclast_si128(x, c0f);
+        y = _mm_andnot_si128(x, c0f);
+        y = _mm_shuffle_epi8(m2l, y);
+        x = _mm_srli_epi64(x, 4);
+        x = _mm_and_si128(x, c0f);
+        x = _mm_xor_si128(_mm_shuffle_epi8(m2h, x), y);
+        y = _mm_xor_si128(
+            _mm_xor_si128(x, _mm_shuffle_epi8(x, r08)),
+            _mm_shuffle_epi8(x, r16),
+        );
+        y = _mm_xor_si128(_mm_slli_epi32(y, 2), _mm_srli_epi32(y, 30));
+        x = _mm_xor_si128(_mm_xor_si128(x, y), _mm_shuffle_epi8(x, r24));
+
+        t2 = _mm_xor_si128(t2, x);
+
+        let k4 = key[28 - i * 4];
+        t4 = core::mem::transmute_copy(&[k4, k4, k4, k4]);
+        x = _mm_xor_si128(_mm_xor_si128(_mm_xor_si128(t0, t1), t2), t4);
+
+        y = _mm_and_si128(x, c0f);
+        y = _mm_shuffle_epi8(m1l, y);
+        x = _mm_srli_epi64(x, 4);
+        x = _mm_and_si128(x, c0f);
+        x = _mm_xor_si128(_mm_shuffle_epi8(m1h, x), y);
+        x = _mm_shuffle_epi8(x, shr);
+        x = _mm_aesenclast_si128(x, c0f);
+        y = _mm_andnot_si128(x, c0f);
+        y = _mm_shuffle_epi8(m2l, y);
+        x = _mm_srli_epi64(x, 4);
+        x = _mm_and_si128(x, c0f);
+        x = _mm_xor_si128(_mm_shuffle_epi8(m2h, x), y);
+        y = _mm_xor_si128(
+            _mm_xor_si128(x, _mm_shuffle_epi8(x, r08)),
+            _mm_shuffle_epi8(x, r16),
+        );
+        y = _mm_xor_si128(_mm_slli_epi32(y, 2), _mm_srli_epi32(y, 30));
+        x = _mm_xor_si128(_mm_xor_si128(x, y), _mm_shuffle_epi8(x, r24));
+
+        t3 = _mm_xor_si128(t3, x);
     }
 
-    //转化端序
-    X[0] = _mm256_shuffle_epi8(X[0], vindex);
-    X[1] = _mm256_shuffle_epi8(X[1], vindex);
-    X[2] = _mm256_shuffle_epi8(X[2], vindex);
-    X[3] = _mm256_shuffle_epi8(X[3], vindex);
+    let mut res: [u32;4] = [0;4];
+    let vr: [u32; 4];
 
-    let mut out_temp1: [u64;4] = [0x0,0x0,0x0,0x0];
-    let mut out_temp2: [u64;4] = [0x0,0x0,0x0,0x0];
-    let mut out_temp3: [u64;4] = [0x0,0x0,0x0,0x0];
-    let mut out_temp4: [u64;4] = [0x0,0x0,0x0,0x0];
-    //恢复分组并装填
-    _mm256_storeu_si256(
-        out_temp1.as_mut_ptr() as *mut __m256i,
-        _mm256_unpacklo_epi64(
-            _mm256_unpacklo_epi32(X[3], X[2]),
-            _mm256_unpacklo_epi32(X[1], X[0]),
-        ),
-    );
+    let mut v: __m128i = _mm_set_epi64x(0x0, 0x0);
+    let v_prt: *mut __m128i = &mut v;
+    _mm_store_si128(v_prt, _mm_shuffle_epi8(t3, flp));
+    vr = core::mem::transmute_copy(&v);
+    res[0] = vr[0];
 
-    _mm256_storeu_si256(
-        out_temp2.as_mut_ptr() as *mut __m256i,
-        _mm256_unpackhi_epi64(
-            _mm256_unpacklo_epi32(X[3], X[2]),
-            _mm256_unpacklo_epi32(X[1], X[0]),
-        ),
-    );
+    let mut v: __m128i = _mm_set_epi64x(0x0, 0x0);
+    let v_prt: *mut __m128i = &mut v;
+    _mm_store_si128(v_prt, _mm_shuffle_epi8(t2, flp));
 
-    _mm256_storeu_si256(
-        out_temp3.as_mut_ptr() as *mut __m256i,
-        _mm256_unpacklo_epi64(
-            _mm256_unpackhi_epi32(X[3], X[2]),
-            _mm256_unpackhi_epi32(X[1], X[0]),
-        ),
-    );
+    let vr: [u32; 4];
+    vr = core::mem::transmute_copy(&v);
+    res[1] = vr[0];
 
-    _mm256_storeu_si256(
-        out_temp4.as_mut_ptr() as *mut __m256i,
-        _mm256_unpackhi_epi64(
-            _mm256_unpackhi_epi32(X[3], X[2]),
-            _mm256_unpackhi_epi32(X[1], X[0]),
-        ),
-    );
+    let mut v: __m128i = _mm_set_epi64x(0x0, 0x0);
+    let v_prt: *mut __m128i = &mut v;
+    _mm_store_si128(v_prt, _mm_shuffle_epi8(t1, flp));
 
-    out[0] = (out_temp1[0] << 56 >> 56) as u8;
-    out[1] = out_temp1[1] as u8;
-    out[2] = out_temp1[2] as u8;
-    out[3] = out_temp1[3] as u8;
+    let vr: [u32; 4];
+    vr = core::mem::transmute_copy(&v);
+    res[2] = vr[0];
 
-    out[4] = out_temp2[0] as u8;
-    out[5] = out_temp2[1] as u8;
-    out[6] = out_temp2[2] as u8;
-    out[7] = out_temp2[3] as u8;
+    let mut v: __m128i = _mm_set_epi64x(0x0, 0x0);
+    let v_prt: *mut __m128i = &mut v;
+    _mm_store_si128(v_prt, _mm_shuffle_epi8(t0, flp));
 
-    out[8] = out_temp3[0] as u8;
-    out[9] = out_temp3[1] as u8;
-    out[10] = out_temp3[2] as u8;
-    out[11] = out_temp3[3] as u8;
+    let vr: [u32; 4];
+    vr = core::mem::transmute_copy(&v);
+    res[3] = vr[0];
 
-    out[12] = out_temp4[0] as u8;
-    out[13] = out_temp4[1] as u8;
-    out[14] = out_temp4[2] as u8;
-    out[15] = out_temp4[3] as u8;
+
+    *out = core::mem::transmute_copy(&res);
 }
 
 fn tau_trans(input: u32) -> u32 {
@@ -571,42 +631,39 @@ pub struct Sm4Cipher {
     rk: Vec<u32>,
 }
 
-static FK: [u32; 4] = [0xa3b1_bac6, 0x56aa_3350, 0x677d_9197, 0xb270_22dc];
+static FK: [u32; 4] = [0xa3b1bac6, 0x56aa3350, 0x677d9197, 0xb27022dc];
 
 static CK: [u32; 32] = [
-    0x0007_0e15,
-    0x1c23_2a31,
-    0x383f_464d,
-    0x545b_6269,
-    0x7077_7e85,
-    0x8c93_9aa1,
-    0xa8af_b6bd,
-    0xc4cb_d2d9,
-    0xe0e7_eef5,
-    0xfc03_0a11,
-    0x181f_262d,
-    0x343b_4249,
-    0x5057_5e65,
-    0x6c73_7a81,
-    0x888f_969d,
-    0xa4ab_b2b9,
-    0xc0c7_ced5,
-    0xdce3_eaf1,
-    0xf8ff_060d,
-    0x141b_2229,
-    0x3037_3e45,
-    0x4c53_5a61,
-    0x686f_767d,
-    0x848b_9299,
-    0xa0a7_aeb5,
-    0xbcc3_cad1,
-    0xd8df_e6ed,
-    0xf4fb_0209,
-    0x1017_1e25,
-    0x2c33_3a41,
-    0x484f_565d,
-    0x646b_7279,
+    0x00070E15, 0x1C232A31, 0x383F464D, 0x545B6269,
+        0x70777E85, 0x8C939AA1, 0xA8AFB6BD, 0xC4CBD2D9,
+        0xE0E7EEF5, 0xFC030A11, 0x181F262D, 0x343B4249,
+        0x50575E65, 0x6C737A81, 0x888F969D, 0xA4ABB2B9,
+        0xC0C7CED5, 0xDCE3EAF1, 0xF8FF060D, 0x141B2229,
+        0x30373E45, 0x4C535A61, 0x686F767D, 0x848B9299,
+        0xA0A7AEB5, 0xBCC3CAD1, 0xD8DFE6ED, 0xF4FB0209,
+        0x10171E25, 0x2C333A41, 0x484F565D, 0x646B7279
 ];
+
+fn SM4_key_sub(input: u32) -> u32 {
+    let t = SM4_T_non_lin_sub(input);
+
+    t ^ rotl(t ,13) ^ rotl(t, 23)
+}
+
+fn SM4_T_non_lin_sub(X: u32) -> u32 {
+    let mut t: u32 = 0 ;
+
+    t |= ((SBOX[((X >> 24) as u8) as usize]) as u32) << 24;
+    t |= ((SBOX[((X >> 16) as u8) as usize]) as u32) << 16;
+    t |= ((SBOX[((X >> 8) as u8) as usize]) as u32) << 8;
+    t |= (SBOX[(X as u8) as usize]) as u32;
+
+    t
+}
+
+fn rotl(a: u32,n: u32) -> u32 {
+    (a << n) | (a >> (32 - n))
+}
 
 impl Sm4Cipher {
     pub fn new(key: &[u8]) -> Result<Sm4Cipher, Sm4Error> {
@@ -616,10 +673,10 @@ impl Sm4Cipher {
             k[i] ^= FK[i];
         }
         for i in 0..8 {
-            k[0] ^= t_prime_trans(k[1] ^ k[2] ^ k[3] ^ CK[i * 4]);
-            k[1] ^= t_prime_trans(k[2] ^ k[3] ^ k[0] ^ CK[i * 4 + 1]);
-            k[2] ^= t_prime_trans(k[3] ^ k[0] ^ k[1] ^ CK[i * 4 + 2]);
-            k[3] ^= t_prime_trans(k[0] ^ k[1] ^ k[2] ^ CK[i * 4 + 3]);
+            k[0] ^= SM4_key_sub(k[1] ^ k[2] ^ k[3] ^ CK[i * 4]);
+            k[1] ^= SM4_key_sub(k[2] ^ k[3] ^ k[0] ^ CK[i * 4 + 1]);
+            k[2] ^= SM4_key_sub(k[3] ^ k[0] ^ k[1] ^ CK[i * 4 + 2]);
+            k[3] ^= SM4_key_sub(k[0] ^ k[1] ^ k[2] ^ CK[i * 4 + 3]);
             cipher.rk.push(k[0]);
             cipher.rk.push(k[1]);
             cipher.rk.push(k[2]);
@@ -707,32 +764,20 @@ mod tests {
             0x32, 0x10,
         ];
         let ct = cipher.encrypt_sm4ni(&data).unwrap();
-        // let standard_ct: [u8; 16] = [
-        //     0x68, 0x1e, 0xdf, 0x34, 0xd2, 0x06, 0x96, 0x5e, 0x86, 0xb3, 0xe9, 0x4f, 0x53, 0x6e,
-        //     0x42, 0x46,
-        // ];
+        let standard_ct: [u8; 16] = [
+            0x68, 0x1e, 0xdf, 0x34, 0xd2, 0x06, 0x96, 0x5e, 0x86, 0xb3, 0xe9, 0x4f, 0x53, 0x6e,
+            0x42, 0x46,
+        ];
 
-        // // Check the example cipher text
-        // for i in 0..16 {
-        //     assert_eq!(standard_ct[i], ct[i]);
-        // }
+        // Check the example cipher text
+        for i in 0..16 {
+            assert_eq!(standard_ct[i], ct[i]);
+        }
 
         // Check the result of decryption
         let pt = cipher.decrypt_sm4ni(&ct).unwrap();
         for i in 0..16 {
             assert_eq!(pt[i], data[i]);
         }
-
-        // let simd_ct = cipher.encrypt_sm4ni(&data).unwrap();
-
-        // let simd_pt = cipher.decrypt_sm4ni(&simd_ct).unwrap();
-        // for i in 0..16 {
-        //     assert_eq!(simd_pt[i], data[i]);
-        // }
-
-        // let pt = cipher.decrypt(&simd_ct).unwrap();
-        // for i in 0..16 {
-        //     assert_eq!(pt[i], data[i]);
-        // }
     }
 }
