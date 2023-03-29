@@ -73,11 +73,11 @@ fn combine_block(input: &[u32]) -> Sm4Result<[u8; 16]> {
     Ok(out)
 }
 
-// enc 0 加密 1 解密
-#[cfg(all(
-    any(target_arch = "x86", target_arch = "x86_64"),
-    target_feature = "sse2"
-))]
+#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"),))]
+#[target_feature(enable = "sse")]
+#[target_feature(enable = "sse2")]
+#[target_feature(enable = "sse3")]
+#[target_feature(enable = "aes")]
 unsafe fn sm4_crypt_affine_ni(key: &Vec<u32>, sin: &[u8; 64], out: &mut [u8; 64], enc: i32) {
     #[cfg(target_arch = "x86_64")]
     use core::arch::x86_64::*;
@@ -371,26 +371,24 @@ impl Sm4Cipher {
         combine_block(&y)
     }
 
-    // x86_64 下，使用 AVX 指令集加速 sm4 计算速度
-    // 当前开发未完成，仅保证功能正常；后续还需要进行如下处理：
-    // 1. 将加解密的输入输出位宽由 128 位扩展到 512 位
-
     pub fn encrypt_sm4ni(&self, block_in: &[u8; 64]) -> Result<[u8; 64], Sm4Error> {
         let rk = &self.rk;
 
         let mut res: [u8; 64] = [0; 64];
-
-        unsafe { sm4_crypt_affine_ni(rk, block_in, &mut res, 0) };
-
-        Ok(res)
-    }
-
-    pub fn decrypt_sm4ni(&self, block_in: &[u8; 64]) -> Result<[u8; 64], Sm4Error> {
-        let rk = &self.rk;
-
-        let mut res: [u8; 64] = [0; 64];
-
-        unsafe { sm4_crypt_affine_ni(rk, block_in, &mut res, 1) };
+        if is_x86_feature_detected!("sse")
+            && is_x86_feature_detected!("sse2")
+            && is_x86_feature_detected!("sse3")
+            && is_x86_feature_detected!("aes")
+        {
+            unsafe { sm4_crypt_affine_ni(rk, block_in, &mut res, 0) };
+        } else {
+            for i in 0..4 {
+                let tmp_res = self.encrypt(&block_in[i * 16..i * 16 + 16])?;
+                for z in 0..16 {
+                    res[i * 16 + z] = tmp_res[z];
+                }
+            }
+        }
 
         Ok(res)
     }
@@ -484,12 +482,6 @@ mod tests {
         // Check the example cipher text
         for i in 0..64 {
             assert_eq!(standard_ct[i], ct[i]);
-        }
-
-        // Check the result of decryption
-        let pt = cipher.decrypt_sm4ni(&ct).unwrap();
-        for i in 0..64 {
-            assert_eq!(pt[i], data[i]);
         }
     }
 }
